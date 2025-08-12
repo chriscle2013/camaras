@@ -1,4 +1,4 @@
-# Usa una imagen base con Python 3.9
+# Usa una imagen base con Python y las librerías necesarias
 FROM python:3.9-slim-buster
 
 # Instala las dependencias del sistema necesarias para OpenCV
@@ -8,7 +8,11 @@ RUN apt-get update && apt-get install -y \
     libxext6 \
     libxrender1 \
     ffmpeg \
-    libglib2.0-0
+    libglib2.0-0 \
+    libgl1 \
+    libsm6 \
+    libxext6 \
+    libxrender1
 
 # Copia los archivos de tu app
 COPY . /app
