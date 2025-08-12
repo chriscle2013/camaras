@@ -1,79 +1,41 @@
 import streamlit as st
 import cv2
 import numpy as np
-import requests
-import time
+from PIL import Image
 
-st.set_page_config(page_title="IP Cam Viewer", layout="centered")
-st.title("📷 Viewer - Cámaras IP (celular)")
+st.set_page_config(page_title="Multi Cámaras IP", layout="wide")
 
-# Sidebar
-method = st.sidebar.selectbox("Método de lectura", ["OpenCV VideoCapture", "MJPEG (requests)"])
-camera_url = st.sidebar.text_input(
-    "URL de la cámara",
-    placeholder="Ej: http://192.168.1.100:8080/video o https://xxxx.ngrok-free.app/video"
-)
-fps = st.sidebar.slider("FPS máx.", 1, 30, 10)
+st.title("📹 Visualización de Múltiples Cámaras IP con Celulares")
+st.markdown("""
+Escribe las direcciones de las cámaras en formato:
+http://IP_DEL_CELULAR:8080/video
 
-start_button = st.sidebar.button("▶️ Iniciar")
-stop_button = st.sidebar.button("⏹️ Detener")
+php
+Copiar
+Editar
+Una por línea.
+""")
 
-# Estado en session_state
-if "running" not in st.session_state:
-    st.session_state.running = False
+# Entrada de varias URLs
+urls_input = st.text_area("Direcciones de cámaras:", height=150, placeholder="http://192.168.0.101:8080/video\nhttp://192.168.0.102:8080/video")
+urls = [u.strip() for u in urls_input.split("\n") if u.strip()]
 
-# --- Funciones ---
-def read_frame_opencv(url):
-    """Lee un solo frame usando OpenCV."""
-    cap = cv2.VideoCapture(url)
-    ret, frame = cap.read()
-    cap.release()
-    if not ret:
-        return None
-    return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+if st.button("Iniciar transmisión") and urls:
+    cols = st.columns(len(urls))  # Una columna por cámara
 
-def read_frame_mjpeg(url):
-    """Lee un solo frame desde un stream MJPEG."""
-    try:
-        r = requests.get(url, stream=True, timeout=5)
-        bytes_buf = b''
-        for chunk in r.iter_content(chunk_size=1024):
-            bytes_buf += chunk
-            a = bytes_buf.find(b'\xff\xd8')  # JPEG start
-            b = bytes_buf.find(b'\xff\xd9')  # JPEG end
-            if a != -1 and b != -1:
-                jpg = bytes_buf[a:b+2]
-                bytes_buf = bytes_buf[b+2:]
-                img = cv2.imdecode(np.frombuffer(jpg, np.uint8), cv2.IMREAD_COLOR)
-                r.close()
-                if img is not None:
-                    return cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-    except:
-        return None
-    return None
-
-# --- Botones ---
-if start_button and camera_url:
-    st.session_state.running = True
-if stop_button:
-    st.session_state.running = False
-
-# --- Área de video ---
-video_placeholder = st.empty()
-
-# --- Bucle controlado por Streamlit ---
-if st.session_state.running and camera_url:
-    while st.session_state.running:
-        if method == "OpenCV VideoCapture":
-            frame = read_frame_opencv(camera_url)
-        else:
-            frame = read_frame_mjpeg(camera_url)
-
-        if frame is not None:
-            video_placeholder.image(frame, channels="RGB", use_container_width=True)
-        else:
-            st.warning("No se pudo leer el frame. Verifica la URL o la conexión.")
-
-        time.sleep(1 / fps)
+    for i, url in enumerate(urls):
+        with cols[i]:
+            st.subheader(f"Cámara {i+1}")
+            try:
+                cap = cv2.VideoCapture(url)
+                ret, frame = cap.read()
+                if ret:
+                    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                    st.image(frame, caption=f"Cámara {i+1}", use_container_width=True)
+                else:
+                    st.error(f"No se pudo conectar a {url}")
+                cap.release()
+            except Exception as e:
+                st.error(f"Error con {url}: {e}")
 else:
-    st.info("Introduce la URL y pulsa ▶️ Iniciar para ver el stream.")
+    st.info("Introduce las direcciones de las cámaras y pulsa **Iniciar transmisión**.")
