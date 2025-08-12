@@ -1,91 +1,119 @@
+# app.py
 import streamlit as st
 import cv2
-import imutils
 import numpy as np
+import requests
+import time
+from PIL import Image
+import threading
 
-# --- Título y configuración de la interfaz ---
-st.title("Sistema de Vigilancia con Streamlit")
-st.write("Configura la URL de tu cámara IP y presiona 'Iniciar'.")
+st.set_page_config(page_title="IP Cam Viewer", layout="centered")
+st.title("📷 Viewer - Cámaras IP (celular)")
 
-# Campo para que el usuario ingrese la URL de la cámara
-camera_url = st.text_input(
-    "URL de la cámara IP", 
-    value="http://192.168.1.26:8080/video", 
-    help="Ingresa la dirección completa de tu cámara IP (por ejemplo: http://192.168.1.26:8080/video)"
-)
+# --- Sidebar: configuración ---
+method = st.sidebar.selectbox("Método de lectura", ["OpenCV VideoCapture", "MJPEG (requests)"])
+camera_url = st.sidebar.text_input("URL cámara (ej. http://192.168.1.26:8080/video)", value="")
+cols = st.sidebar.multiselect("Modo de diseño", ["Pantalla única", "Grid (2x)"])
+st.sidebar.markdown("Si la cámara requiere user:pass puedes usar: http://user:pass@IP:8080/video")
 
-# Placeholders para los botones y el video
-col1, col2 = st.columns(2)
-start_button = col1.button("Iniciar Vigilancia")
-stop_button = col2.button("Detener Vigilancia")
-video_placeholder = st.empty()
+if 'running' not in st.session_state:
+    st.session_state['running'] = False
+if 'thread' not in st.session_state:
+    st.session_state['thread'] = None
 
-# --- Detección de movimiento ---
-def detect_motion(frame, avg_frame):
-    # Pre-procesamiento para detección de movimiento
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    gray = cv2.GaussianBlur(gray, (21, 21), 0)
+placeholder = st.empty()
 
-    # Si el frame promedio es nulo, lo inicializamos
-    if avg_frame is None:
-        avg_frame = gray.copy().astype("float")
-        return None, avg_frame
+# --- helpers ---
+@st.cache_resource
+def make_cv_capture(url):
+    cap = cv2.VideoCapture(url)
+    return cap
 
-    # Calcula la diferencia entre el frame actual y el promedio
-    cv2.accumulateWeighted(gray, avg_frame, 0.5)
-    frame_delta = cv2.absdiff(gray, cv2.convertScaleAbs(avg_frame))
-    thresh = cv2.threshold(frame_delta, 25, 255, cv2.THRESH_BINARY)[1]
-    thresh = cv2.dilate(thresh, None, iterations=2)
-
-    # Encuentra los contornos del movimiento
-    cnts = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    cnts = imutils.grab_contours(cnts)
-    
-    motion_detected = False
-    for c in cnts:
-        # Filtra contornos pequeños para evitar falsos positivos
-        if cv2.contourArea(c) > 500:
-            (x, y, w, h) = cv2.boundingRect(c)
-            cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
-            motion_detected = True
-            
-    return frame, avg_frame
-
-# --- Bucle principal de la aplicación ---
-# Usamos st.session_state para controlar el estado de la app entre interacciones
-if "is_running" not in st.session_state:
-    st.session_state.is_running = False
-
-if start_button:
-    st.session_state.is_running = True
-
-if stop_button:
-    st.session_state.is_running = False
-    
-if st.session_state.is_running:
-    st.write("Transmisión en vivo iniciada...")
-    cap = cv2.VideoCapture(camera_url)
-    avg_frame = None
-
-    if not cap.isOpened():
-        st.error("No se pudo conectar a la cámara. Verifica la URL y la conexión.")
-        st.session_state.is_running = False
-    else:
-        while st.session_state.is_running:
-            success, frame = cap.read()
-            if not success:
-                st.warning("Se perdió la conexión con la cámara.")
-                st.session_state.is_running = False
-                break
-
-            # Procesar el frame para la detección de movimiento
-            processed_frame, avg_frame = detect_motion(frame, avg_frame)
-            
-            # Muestra el frame en el placeholder de Streamlit
-            if processed_frame is not None:
-                video_placeholder.image(processed_frame, channels="BGR", use_column_width=True)
-        
+def release_cv_capture(url):
+    try:
+        cap = make_cv_capture(url)
         cap.release()
-    
-if not st.session_state.is_running:
-    st.write("Transmisión detenida.")
+    except Exception:
+        pass
+
+def stream_opencv(url):
+    cap = make_cv_capture(url)
+    while st.session_state.get('running', False):
+        if not cap.isOpened():
+            time.sleep(0.5)
+            continue
+        ret, frame = cap.read()
+        if not ret:
+            time.sleep(0.2)
+            continue
+        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        placeholder.image(frame, use_column_width=True)
+        time.sleep(0.03)
+    try:
+        cap.release()
+    except:
+        pass
+
+def stream_mjpeg(url):
+    try:
+        r = requests.get(url, stream=True, timeout=10)
+    except Exception as e:
+        st.error(f"Error conectando: {e}")
+        st.session_state['running'] = False
+        return
+    bytes_buf = b''
+    for chunk in r.iter_content(chunk_size=1024):
+        if not st.session_state.get('running', False):
+            break
+        if chunk:
+            bytes_buf += chunk
+            a = bytes_buf.find(b'\xff\xd8')  # SOI
+            b = bytes_buf.find(b'\xff\xd9')  # EOI
+            if a != -1 and b != -1 and b > a:
+                jpg = bytes_buf[a:b+2]
+                bytes_buf = bytes_buf[b+2:]
+                img = cv2.imdecode(np.frombuffer(jpg, dtype=np.uint8), cv2.IMREAD_COLOR)
+                if img is None:
+                    continue
+                img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                placeholder.image(img, use_column_width=True)
+    try:
+        r.close()
+    except:
+        pass
+
+def start_thread(url, method):
+    if not url:
+        st.warning("Introduce la URL de la cámara en el sidebar.")
+        return
+    if st.session_state['thread'] and st.session_state['thread'].is_alive():
+        return
+    st.session_state['running'] = True
+    if method == "OpenCV VideoCapture":
+        th = threading.Thread(target=stream_opencv, args=(url,), daemon=True)
+    else:
+        th = threading.Thread(target=stream_mjpeg, args=(url,), daemon=True)
+    st.session_state['thread'] = th
+    th.start()
+
+def stop_stream():
+    st.session_state['running'] = False
+    # allow thread to exit gracefully
+    time.sleep(0.5)
+    # try to release resources
+    try:
+        release_cv_capture(camera_url)
+    except:
+        pass
+
+# --- Controls ---
+col1, col2 = st.columns(2)
+with col1:
+    if st.button("Iniciar stream"):
+        start_thread(camera_url, method)
+with col2:
+    if st.button("Detener"):
+        stop_stream()
+
+st.write("Estado:", "▶️ Corriendo" if st.session_state['running'] else "⏸️ Detenido")
+st.write("Consejo: prueba primero en tu ordenador local con `streamlit run app.py` y la URL del celular en la misma Wi-Fi.")
