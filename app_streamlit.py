@@ -1,8 +1,3 @@
-Aquí está el código completo y final para tu archivo app_streamlit.py. Este código incluye toda la lógica para la conexión a la cámara, la interfaz de usuario con Streamlit y la detección de movimiento.
-
-Código Final de app_streamlit.py
-Python
-
 import streamlit as st
 import cv2
 import imutils
