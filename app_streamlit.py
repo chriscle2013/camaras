@@ -1,35 +1,46 @@
 import streamlit as st
 import cv2
-import numpy as np
+import tempfile
+import os
 
-st.set_page_config(page_title="Cámaras IP - Celulares", layout="wide")
-st.title("📹 Visualización de múltiples cámaras IP desde celulares")
+st.set_page_config(page_title="Multi-Cámara IP", layout="wide")
 
-# Lista de URLs de tus celulares
-# Ejemplo: "http://192.168.1.101:8080/video"
-urls = {
-    "Celular 1": "http://192.168.1.101:8080/video",
-    "Celular 2": "http://192.168.1.102:8080/video",
-    "Celular 3": "http://192.168.1.103:8080/video"
-}
+st.title("📹 Visualizador de múltiples cámaras IP desde celulares")
 
-# Número de columnas en pantalla
-num_cols = 2
-cols = st.columns(num_cols)
+st.write("Ingresa las direcciones IP de tus celulares (con puerto), separadas por comas. Ejemplo:")
+st.code("http://192.168.0.101:8080/video, http://192.168.0.102:8080/video", language="plaintext")
 
-for idx, (nombre, url) in enumerate(urls.items()):
-    col = cols[idx % num_cols]  # Distribuir en columnas
+ips_input = st.text_input("Direcciones IP de cámaras:")
 
-    try:
-        cap = cv2.VideoCapture(url)
-        ret, frame = cap.read()
-        cap.release()
+if st.button("Conectar cámaras"):
+    if not ips_input.strip():
+        st.error("⚠️ Por favor ingresa al menos una IP.")
+    else:
+        urls = [ip.strip() for ip in ips_input.split(",")]
 
-        if ret:
-            # Convertir a RGB para mostrar en Streamlit
-            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            col.image(frame, caption=nombre, use_container_width=True)
-        else:
-            col.error(f"No se pudo conectar a {nombre}")
-    except Exception as e:
-        col.error(f"Error con {nombre}: {e}")
+        for idx, url in enumerate(urls, start=1):
+            st.subheader(f"📱 Cámara {idx}: {url}")
+
+            try:
+                cap = cv2.VideoCapture(url)
+                if not cap.isOpened():
+                    st.error(f"No se pudo conectar con la cámara {idx}")
+                    continue
+
+                ret, frame = cap.read()
+                if not ret:
+                    st.warning(f"No se pudo recibir imagen de la cámara {idx}")
+                    cap.release()
+                    continue
+
+                # Guardar frame temporalmente para mostrar en Streamlit
+                temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
+                cv2.imwrite(temp_file.name, frame)
+                st.image(temp_file.name, channels="BGR", use_container_width=True)
+                temp_file.close()
+                os.unlink(temp_file.name)
+
+                cap.release()
+
+            except Exception as e:
+                st.error(f"Error en cámara {idx}: {e}")
