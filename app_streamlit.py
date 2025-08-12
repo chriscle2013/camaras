@@ -1,41 +1,35 @@
 import streamlit as st
 import cv2
 import numpy as np
-from PIL import Image
 
-st.set_page_config(page_title="Multi Cámaras IP", layout="wide")
+st.set_page_config(page_title="Cámaras IP - Celulares", layout="wide")
+st.title("📹 Visualización de múltiples cámaras IP desde celulares")
 
-st.title("📹 Visualización de Múltiples Cámaras IP con Celulares")
-st.markdown("""
-Escribe las direcciones de las cámaras en formato:
-http://IP_DEL_CELULAR:8080/video
+# Lista de URLs de tus celulares
+# Ejemplo: "http://192.168.1.101:8080/video"
+urls = {
+    "Celular 1": "http://192.168.1.101:8080/video",
+    "Celular 2": "http://192.168.1.102:8080/video",
+    "Celular 3": "http://192.168.1.103:8080/video"
+}
 
-php
-Copiar
-Editar
-Una por línea.
-""")
+# Número de columnas en pantalla
+num_cols = 2
+cols = st.columns(num_cols)
 
-# Entrada de varias URLs
-urls_input = st.text_area("Direcciones de cámaras:", height=150, placeholder="http://192.168.0.101:8080/video\nhttp://192.168.0.102:8080/video")
-urls = [u.strip() for u in urls_input.split("\n") if u.strip()]
+for idx, (nombre, url) in enumerate(urls.items()):
+    col = cols[idx % num_cols]  # Distribuir en columnas
 
-if st.button("Iniciar transmisión") and urls:
-    cols = st.columns(len(urls))  # Una columna por cámara
+    try:
+        cap = cv2.VideoCapture(url)
+        ret, frame = cap.read()
+        cap.release()
 
-    for i, url in enumerate(urls):
-        with cols[i]:
-            st.subheader(f"Cámara {i+1}")
-            try:
-                cap = cv2.VideoCapture(url)
-                ret, frame = cap.read()
-                if ret:
-                    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    st.image(frame, caption=f"Cámara {i+1}", use_container_width=True)
-                else:
-                    st.error(f"No se pudo conectar a {url}")
-                cap.release()
-            except Exception as e:
-                st.error(f"Error con {url}: {e}")
-else:
-    st.info("Introduce las direcciones de las cámaras y pulsa **Iniciar transmisión**.")
+        if ret:
+            # Convertir a RGB para mostrar en Streamlit
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            col.image(frame, caption=nombre, use_container_width=True)
+        else:
+            col.error(f"No se pudo conectar a {nombre}")
+    except Exception as e:
+        col.error(f"Error con {nombre}: {e}")
