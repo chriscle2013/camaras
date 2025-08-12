@@ -11,7 +11,7 @@ st.write("Configura la URL de tu cámara IP y presiona 'Iniciar'.")
 camera_url = st.text_input(
     "URL de la cámara IP", 
     value="http://192.168.1.26:8080/video", 
-    help="Ingresa la dirección completa de tu cámara IP (por ejemplo: http://192.168.1.100:8080/video)"
+    help="Ingresa la dirección completa de tu cámara IP (por ejemplo: http://192.168.1.26:8080/video)"
 )
 
 # Placeholders para los botones y el video
