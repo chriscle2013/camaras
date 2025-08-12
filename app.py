@@ -5,7 +5,7 @@ import imutils
 app = Flask(__name__)
 
 # URL de la cámara IP (reemplaza esto con la IP de tu celular)
-camera_url = "http://192.168.1.100:8080/video"
+camera_url = "http://192.168.1.26:8080/video"
 
 @app.route('/')
 def index():
